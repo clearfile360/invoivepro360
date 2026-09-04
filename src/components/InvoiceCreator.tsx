@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Invoice, CompanySettings } from "../types";
 import { sampleCreationTemplates, sampleOcrInvoices, generateId, calculateInvoiceTotals } from "../utils/invoiceUtils";
+import { safeFetchJson } from "../utils/apiUtils";
 
 interface InvoiceCreatorProps {
   onInvoiceCreated: (invoice: Invoice) => void;
@@ -50,18 +51,11 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
     }
 
     try {
-      const response = await fetch("/api/invoice/create-from-text", {
+      const generatedData = await safeFetchJson("/api/invoice/create-from-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: enrichedPrompt })
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate invoice");
-      }
-
-      const generatedData = await response.json();
       
       // Complete calculations (taxes, igst, cgst, sgst, subtotal, totals)
       const mathResult = calculateInvoiceTotals(
@@ -95,8 +89,8 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
 
       onInvoiceCreated(finalInvoice);
     } catch (err: any) {
-      console.error(err);
-      setTextError(err.message || "An error occurred while creating the invoice with Gemini.");
+      console.error("AI invoice generation error:", err);
+      setTextError(err.message || "AI invoice generation failed. Please check the Gemini API configuration.");
     } finally {
       setTextGenerating(false);
     }
@@ -108,18 +102,11 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
     setOcrError(null);
 
     try {
-      const response = await fetch("/api/invoice/ocr", {
+      const extracted = await safeFetchJson("/api/invoice/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileBase64: base64Data, mimeType })
       });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Failed to read invoice scan");
-      }
-
-      const extracted = await response.json();
 
       // Complete calculations safely
       const mathResult = calculateInvoiceTotals(
@@ -154,7 +141,7 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
 
       onInvoiceCreated(finalInvoice);
     } catch (err: any) {
-      console.error(err);
+      console.error("AI OCR error:", err);
       setOcrError(err.message || "Could not parse details from image. Try another file or template.");
     } finally {
       setOcrLoading(false);
@@ -209,20 +196,13 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
     setOcrError(null);
     setSelectedFile({ name: sample.name, size: "Demo Document" });
 
-    // We can simulate an actual prompt API call sending the text version to get a high fidelity response,
-    // which effectively runs our Gemini parser server-side to guarantee realism!
     try {
-      const response = await fetch("/api/invoice/create-from-text", {
+      const parsed = await safeFetchJson("/api/invoice/create-from-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: `This is extracted from an OCR document scan: ${sample.prompt}` })
       });
 
-      if (!response.ok) {
-        throw new Error("Demo parsing failed");
-      }
-
-      const parsed = await response.json();
       const mathResult = calculateInvoiceTotals(parsed.items, parsed.supplierGstin, parsed.customerGstin);
 
       const finalInvoice: Invoice = {
@@ -255,8 +235,9 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
         setOcrLoading(false);
       }, 1500);
 
-    } catch (e) {
-      setOcrError("Demo parsing failed. Please check backend API.");
+    } catch (e: any) {
+      console.error("Demo OCR parsing error:", e);
+      setOcrError(e.message || "Demo parsing failed. Please check backend API.");
       setOcrLoading(false);
     }
   };

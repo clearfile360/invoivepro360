@@ -12,6 +12,7 @@ import {
   FileSpreadsheet
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { safeFetchJson } from "../utils/apiUtils";
 
 interface InvoiceChatProps {
   invoices: Invoice[];
@@ -46,7 +47,7 @@ export default function InvoiceChat({ invoices, onApplyFilter, messages, setMess
     setLoading(true);
 
     try {
-      const response = await fetch("/api/invoice/chat", {
+      const botData = await safeFetchJson("/api/invoice/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -54,12 +55,6 @@ export default function InvoiceChat({ invoices, onApplyFilter, messages, setMess
           invoices
         })
       });
-
-      if (!response.ok) {
-        throw new Error("Chat request failed. Please check your API configuration.");
-      }
-
-      const botData = await response.json();
 
       const botMsg: ChatMessage = {
         id: "msg-" + Math.random().toString(36).substring(2, 9),
