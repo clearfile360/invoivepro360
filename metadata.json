@@ -1,0 +1,6 @@
+{
+  "name": "InvoicePro 360",
+  "description": "The AI Workspace for Every Business Invoice, powered by Unikorn360 AI Solutions. Create, scan, extract, validate, and chat with your business invoices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
