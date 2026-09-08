@@ -49,7 +49,7 @@ Standard GST rates are typically 0, 5, 12, 18, 28. Use those if not specified.
 Return the structured invoice details exactly matching the schema.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         systemInstruction,
@@ -124,7 +124,7 @@ Return the structured invoice details exactly matching the schema.`,
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: { parts: [imagePart, textPart] },
       config: {
         responseMimeType: "application/json",
@@ -247,7 +247,7 @@ Always return your response in JSON format matching the schema:
 
     // Generate response
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: [
         ...chatHistory,
         { role: 'user', parts: [{ text: userPrompt }] }

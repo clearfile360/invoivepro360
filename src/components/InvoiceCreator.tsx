@@ -190,28 +190,28 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
     reader.readAsDataURL(file);
   };
 
-  // Simulate OCR with sample demo documents
-  const handleSelectDemoOcr = async (sample: typeof sampleOcrInvoices[0]) => {
+  // Test OCR extraction with sample catalog documents
+  const handleSelectSampleOcr = async (sample: typeof sampleOcrInvoices[0]) => {
     setOcrLoading(true);
     setOcrError(null);
-    setSelectedFile({ name: sample.name, size: "Demo Document" });
+    setSelectedFile({ name: sample.name, size: "Sample Document" });
 
     try {
       const parsed = await safeFetchJson("/api/invoice/create-from-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: `This is extracted from an OCR document scan: ${sample.prompt}` })
+        body: JSON.stringify({ prompt: `Extract and structure this scanned invoice: ${sample.prompt}` })
       });
 
       const mathResult = calculateInvoiceTotals(parsed.items, parsed.supplierGstin, parsed.customerGstin);
 
       const finalInvoice: Invoice = {
         id: "inv-" + generateId(),
-        invoiceNumber: parsed.invoiceNumber || "AO-88421",
-        supplierName: parsed.supplierName || "Sample Supplier",
+        invoiceNumber: parsed.invoiceNumber || "INV-001",
+        supplierName: parsed.supplierName || "Supplier",
         supplierGstin: parsed.supplierGstin || "",
         supplierAddress: parsed.supplierAddress || "",
-        customerName: parsed.customerName || "Sample Customer",
+        customerName: parsed.customerName || "Customer",
         customerGstin: parsed.customerGstin || "",
         customerAddress: parsed.customerAddress || "",
         date: parsed.date || new Date().toISOString().substring(0, 10),
@@ -225,19 +225,16 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
         status: "unpaid",
         category: "Purchase",
         ocrSource: sample.name,
-        notes: `Simulated OCR scan from demo catalog.`,
+        notes: `Extracted via Gemini AI parser.`,
         createdAt: new Date().toISOString()
       };
 
-      // Add delay to mimic scanning feeling
-      setTimeout(() => {
-        onInvoiceCreated(finalInvoice);
-        setOcrLoading(false);
-      }, 1500);
+      onInvoiceCreated(finalInvoice);
+      setOcrLoading(false);
 
     } catch (e: any) {
-      console.error("Demo OCR parsing error:", e);
-      setOcrError(e.message || "Demo parsing failed. Please check backend API.");
+      console.error("OCR parsing error:", e);
+      setOcrError(e.message || "Parsing failed. Please check backend API.");
       setOcrLoading(false);
     }
   };
@@ -441,17 +438,17 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
               </div>
             )}
 
-            {/* Predefined OCR demo scans */}
-            <div className="space-y-2.5 border-t border-white/5 pt-5" id="demo-ocr-scans">
+            {/* Sample OCR Scans */}
+            <div className="space-y-2.5 border-t border-white/5 pt-5" id="sample-ocr-scans">
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center space-x-1">
                 <ClipboardList className="w-3.5 h-3.5 text-slate-500" />
-                <span>Interactive sample scans (Click to test OCR)</span>
+                <span>Sample Document Prompts (Click to test OCR parsing)</span>
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3" id="demo-scans-grid">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3" id="sample-scans-grid">
                 {sampleOcrInvoices.map((sample, idx) => (
                   <button
                     key={idx}
-                    onClick={() => handleSelectDemoOcr(sample)}
+                    onClick={() => handleSelectSampleOcr(sample)}
                     disabled={ocrLoading}
                     className="text-left p-3.5 rounded-xl border border-white/5 bg-white/5 hover:border-indigo-500 hover:bg-indigo-500/10 transition-all flex items-center justify-between group cursor-pointer"
                   >
@@ -465,7 +462,7 @@ export default function InvoiceCreator({ onInvoiceCreated, onClose, companySetti
                     </div>
                     <div className="text-right shrink-0 pl-2">
                       <span className="text-xs font-semibold text-indigo-400 block">{sample.amount}</span>
-                      <span className="text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded font-bold">Demo Scan</span>
+                      <span className="text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded font-bold">Sample Prompt</span>
                     </div>
                   </button>
                 ))}

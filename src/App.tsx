@@ -94,8 +94,11 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [dbError, setDbError] = useState<string | null>(null);
+
   // Load user data from Supabase PostgreSQL (isolated by user_id)
   const loadUserData = async (user: SupabaseUser) => {
+    setDbError(null);
     try {
       // 1. Fetch Company Settings
       const profile = await fetchUserProfile(user.id);
@@ -106,8 +109,9 @@ export default function App() {
       // 2. Fetch Invoices from Supabase
       const userInvoices = await fetchUserInvoices(user.id);
       setInvoices(userInvoices);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading user data from Supabase:", error);
+      setDbError(error?.message || "Failed to load invoices from database.");
     }
   };
 
@@ -232,12 +236,9 @@ export default function App() {
       setInvoices(updated);
       setSelectedInvoice(created);
       setActiveTab("ledger");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating invoice in Supabase:", err);
-      const fallbackWithUser = { ...newInvoice, userId: currentUser.id };
-      setInvoices([fallbackWithUser, ...invoices]);
-      setSelectedInvoice(fallbackWithUser);
-      setActiveTab("ledger");
+      setDbError(err?.message || "Failed to save invoice to database. Please check your Supabase connection.");
     }
   };
 
@@ -250,11 +251,9 @@ export default function App() {
       const updated = invoices.map(inv => inv.id === saved.id ? saved : inv);
       setInvoices(updated);
       setSelectedInvoice(saved);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error updating invoice in Supabase:", err);
-      const updated = invoices.map(inv => inv.id === updatedInvoice.id ? updatedInvoice : inv);
-      setInvoices(updated);
-      setSelectedInvoice(updatedInvoice);
+      setDbError(err?.message || "Failed to update invoice in database.");
     }
   };
 
@@ -269,15 +268,15 @@ export default function App() {
         if (currentUser) {
           try {
             await deleteInvoiceFromDb(id, currentUser.id);
-          } catch (err) {
+            const updated = invoices.filter(inv => inv.id !== id);
+            setInvoices(updated);
+            if (selectedInvoice?.id === id) {
+              setSelectedInvoice(null);
+            }
+          } catch (err: any) {
             console.error("Error deleting invoice from Supabase:", err);
+            setDbError(err?.message || "Failed to delete invoice from database.");
           }
-        }
-        
-        const updated = invoices.filter(inv => inv.id !== id);
-        setInvoices(updated);
-        if (selectedInvoice?.id === id) {
-          setSelectedInvoice(null);
         }
         setConfirmDialog(null);
       }
@@ -299,7 +298,7 @@ export default function App() {
     );
   }
 
-  // Unauthenticated: Show strict Google OAuth login page (zero bypass, zero demo mode)
+  // Unauthenticated: Show strict Google OAuth login page (zero bypass)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#0A0A0B] text-slate-300 flex flex-col justify-between p-6 sm:p-12 relative overflow-hidden" id="app-login-screen">
@@ -507,6 +506,21 @@ export default function App() {
 
         {/* Workspace Container */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          {dbError && (
+            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs p-4 rounded-xl flex items-center justify-between shadow-lg" id="app-db-error-banner">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span className="font-semibold">{dbError}</span>
+              </div>
+              <button
+                onClick={() => setDbError(null)}
+                className="text-rose-400 hover:text-white text-xs font-bold px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 rounded-lg transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Main Controls - Workspace Navigation */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 pb-3 gap-4" id="tab-controls-row">
             <div className="flex bg-[#111113] border border-white/5 p-1 rounded-2xl" id="tab-nav-wrapper">
