@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   Building2, 
   MapPin, 
@@ -17,7 +17,11 @@ import {
   Save,
   CheckCircle2,
   RefreshCw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Upload,
+  Trash2,
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { CompanySettings } from "../types";
 import { isValidGstin } from "../utils/invoiceUtils";
@@ -58,15 +62,149 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
   const [name, setName] = useState(settings.name);
   const [address, setAddress] = useState(settings.address);
   const [gstin, setGstin] = useState(settings.gstin);
-  const [logoType, setLogoType] = useState<"icon" | "url" | "initials">(settings.logoType);
+  const [logoType, setLogoType] = useState<"icon" | "url" | "initials" | "upload">(settings.logoType || (settings.logoBase64 ? "upload" : "url"));
   const [logoIcon, setLogoIcon] = useState(settings.logoIcon);
   const [logoColor, setLogoColor] = useState(settings.logoColor);
   const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
   const [logoInitials, setLogoInitials] = useState(settings.logoInitials);
-  
+  const [logoBase64, setLogoBase64] = useState<string | undefined>(settings.logoBase64);
+  const [logoFileName, setLogoFileName] = useState<string | undefined>(settings.logoFileName);
+  const [logoFileSize, setLogoFileSize] = useState<string | undefined>(settings.logoFileSize);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [savingState, setSavingState] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Helper to format file size
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
+  // Process and optimize local image
+  const processImageFile = (file: File) => {
+    setUploadError(null);
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please upload a valid image file (PNG, JPG, SVG, WebP, or GIF).");
+      return;
+    }
+
+    // Limit raw upload to 8MB
+    if (file.size > 8 * 1024 * 1024) {
+      setUploadError("Image is too large. Please upload an image under 8MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (!dataUrl) return;
+
+      // If it's SVG, keep direct text data URL for vector clarity
+      if (file.type === "image/svg+xml") {
+        setLogoBase64(dataUrl);
+        setLogoFileName(file.name);
+        setLogoFileSize(formatBytes(file.size));
+        setLogoType("upload");
+        return;
+      }
+
+      // For raster images (PNG, JPG, WebP), optimize dimension to max 600px maintaining transparency
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 600;
+        let { width, height } = img;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(img, 0, 0, width, height);
+            const optimizedDataUrl = canvas.toDataURL(file.type === "image/jpeg" ? "image/jpeg" : "image/png", 0.92);
+            setLogoBase64(optimizedDataUrl);
+            setLogoFileName(file.name);
+            setLogoFileSize(formatBytes(Math.round((optimizedDataUrl.length * 3) / 4)));
+            setLogoType("upload");
+            return;
+          }
+        }
+
+        // Use direct data URL if already within dimensions
+        setLogoBase64(dataUrl);
+        setLogoFileName(file.name);
+        setLogoFileSize(formatBytes(file.size));
+        setLogoType("upload");
+      };
+      img.onerror = () => {
+        setUploadError("Could not parse image file. Please try another image.");
+      };
+      img.src = dataUrl;
+    };
+
+    reader.onerror = () => {
+      setUploadError("Failed to read the selected file.");
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleRemoveUploadedLogo = () => {
+    setLogoBase64(undefined);
+    setLogoFileName(undefined);
+    setLogoFileSize(undefined);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   // Default preset for Unikorn360 AI Solutions
   const handleResetToParentCompany = () => {
@@ -78,6 +216,9 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
     setLogoColor("indigo");
     setLogoInitials("U360");
     setLogoUrl("/logo.svg");
+    setLogoBase64(undefined);
+    setLogoFileName(undefined);
+    setLogoFileSize(undefined);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -95,6 +236,11 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
       return;
     }
 
+    if (logoType === "upload" && !logoBase64 && !logoUrl) {
+      setValidationError("Please select or upload a custom logo image, or choose another branding style.");
+      return;
+    }
+
     setSavingState(true);
     try {
       await onSave({
@@ -105,7 +251,10 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
         logoIcon,
         logoColor,
         logoUrl: logoUrl.trim(),
-        logoInitials: logoInitials.trim().substring(0, 5)
+        logoInitials: logoInitials.trim().substring(0, 5),
+        logoBase64,
+        logoFileName,
+        logoFileSize
       });
       setValidationSuccess("Business settings updated successfully and synced with secure cloud.");
       setTimeout(() => setValidationSuccess(null), 4000);
@@ -118,14 +267,29 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
 
   // Resolve active logo view for Preview Card
   const renderLogoPreview = () => {
+    if (logoType === "upload" && (logoBase64 || logoUrl)) {
+      return (
+        <div className="w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-[#161618] p-1.5 flex items-center justify-center shadow-md shrink-0 relative group">
+          <img 
+            src={logoBase64 || logoUrl} 
+            alt="Custom Brand Logo" 
+            className="w-full h-full object-contain rounded-lg"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      );
+    }
+
     if (logoType === "url" && logoUrl) {
       return (
         <img 
           src={logoUrl} 
           alt="Brand Logo" 
-          className="w-16 h-16 rounded-xl object-contain border border-white/10 bg-white/5 p-1"
+          className="w-16 h-16 rounded-xl object-contain border border-white/10 bg-white/5 p-1 shrink-0"
           onError={(e) => {
-            // fallback
             (e.target as HTMLImageElement).style.display = "none";
           }}
           referrerPolicy="no-referrer"
@@ -136,7 +300,7 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
     if (logoType === "initials" && logoInitials) {
       const activeColorConf = logoColorsMap[logoColor] || logoColorsMap.indigo;
       return (
-        <div className={`w-16 h-16 rounded-xl ${activeColorConf.bg} border ${activeColorConf.border} ${activeColorConf.text} flex items-center justify-center font-extrabold text-xl tracking-tight shadow-md`}>
+        <div className={`w-16 h-16 rounded-xl ${activeColorConf.bg} border ${activeColorConf.border} ${activeColorConf.text} flex items-center justify-center font-extrabold text-xl tracking-tight shadow-md shrink-0`}>
           {logoInitials}
         </div>
       );
@@ -146,7 +310,7 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
     const IconComponent = logoIconsMap[logoIcon] || Sparkles;
     const activeColorConf = logoColorsMap[logoColor] || logoColorsMap.indigo;
     return (
-      <div className={`w-16 h-16 rounded-xl ${activeColorConf.bg} border ${activeColorConf.border} ${activeColorConf.text} flex items-center justify-center shadow-lg transition-all`}>
+      <div className={`w-16 h-16 rounded-xl ${activeColorConf.bg} border ${activeColorConf.border} ${activeColorConf.text} flex items-center justify-center shadow-lg transition-all shrink-0`}>
         <IconComponent className="w-8 h-8" />
       </div>
     );
@@ -159,7 +323,7 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
         <div className="flex items-center justify-between border-b border-white/5 pb-4">
           <div className="space-y-1">
             <h2 className="text-base font-bold text-white font-display">Business Profile Settings</h2>
-            <p className="text-xs text-slate-400">Configure your parent company identity, addresses, tax registry & logos.</p>
+            <p className="text-xs text-slate-400">Configure your parent company identity, addresses, tax registry & custom logos.</p>
           </div>
           
           <button
@@ -230,28 +394,59 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
 
           {/* Logo configuration */}
           <div className="border-t border-white/5 pt-4 space-y-4">
-            <p className="text-xs font-bold text-white uppercase tracking-wider text-slate-500">Corporate Branding & Logo</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-white uppercase tracking-wider text-slate-500">Corporate Branding & Logo</p>
+              <span className="text-[10px] text-indigo-400 font-semibold">Custom Upload Available</span>
+            </div>
             
-            {/* Logo type selector */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* Logo type selector - 4 Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setLogoType("upload")}
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  logoType === "upload" 
+                    ? "bg-indigo-600 border-indigo-400/20 text-white shadow-md shadow-indigo-600/10" 
+                    : "bg-[#161618] border-white/5 text-slate-400 hover:text-white"
+                }`}
+                id="settings-logo-type-upload"
+              >
+                <Upload className="w-3.5 h-3.5 shrink-0" />
+                <span>Upload Logo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLogoType("url")}
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  logoType === "url" 
+                    ? "bg-indigo-600 border-indigo-400/20 text-white shadow-md shadow-indigo-600/10" 
+                    : "bg-[#161618] border-white/5 text-slate-400 hover:text-white"
+                }`}
+                id="settings-logo-type-url"
+              >
+                <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Image URL</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setLogoType("icon")}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                   logoType === "icon" 
                     ? "bg-indigo-600 border-indigo-400/20 text-white shadow-md shadow-indigo-600/10" 
                     : "bg-[#161618] border-white/5 text-slate-400 hover:text-white"
                 }`}
                 id="settings-logo-type-icon"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>Vector Icon</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setLogoType("initials")}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                   logoType === "initials" 
                     ? "bg-indigo-600 border-indigo-400/20 text-white shadow-md shadow-indigo-600/10" 
                     : "bg-[#161618] border-white/5 text-slate-400 hover:text-white"
@@ -259,25 +454,150 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
                 id="settings-logo-type-initials"
               >
                 <span className="font-mono text-xs font-black">Aa</span>
-                <span>Initials Text</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setLogoType("url")}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
-                  logoType === "url" 
-                    ? "bg-indigo-600 border-indigo-400/20 text-white shadow-md shadow-indigo-600/10" 
-                    : "bg-[#161618] border-white/5 text-slate-400 hover:text-white"
-                }`}
-                id="settings-logo-type-url"
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>Image URL</span>
+                <span>Monogram</span>
               </button>
             </div>
 
             {/* Sub fields depending on logo type */}
+            
+            {/* 1. UPLOAD LOCAL CUSTOM LOGO */}
+            {logoType === "upload" && (
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+                  className="hidden"
+                  id="local-logo-file-input"
+                />
+
+                {logoBase64 ? (
+                  /* Uploaded Logo Active Card */
+                  <div className="bg-[#161618] border border-indigo-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4" id="uploaded-logo-info-card">
+                    <div className="flex items-center space-x-3.5">
+                      {/* Logo square with checkered transparency pattern */}
+                      <div className="w-14 h-14 rounded-xl border border-white/10 bg-[#1c1c1f] p-1.5 flex items-center justify-center shadow-inner relative overflow-hidden shrink-0">
+                        <img 
+                          src={logoBase64} 
+                          alt="Uploaded Logo" 
+                          className="w-full h-full object-contain rounded-lg"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <p className="text-xs font-bold text-white max-w-[200px] truncate" title={logoFileName}>
+                            {logoFileName || "Custom Uploaded Logo"}
+                          </p>
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold flex items-center space-x-1">
+                            <Check className="w-2.5 h-2.5" />
+                            <span>Active</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {logoFileSize ? `${logoFileSize} • ` : ""}Ready for invoices & exports
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg border border-indigo-500/20 flex items-center space-x-1.5 transition-all cursor-pointer"
+                        id="replace-logo-btn"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Change Logo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRemoveUploadedLogo}
+                        className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold px-3 py-1.5 rounded-lg border border-rose-500/20 flex items-center space-x-1.5 transition-all cursor-pointer"
+                        id="remove-logo-btn"
+                        title="Remove uploaded logo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Dropzone for Uploading */
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2.5 ${
+                      isDragging 
+                        ? "border-indigo-500 bg-indigo-500/10 scale-[1.01]" 
+                        : "border-white/10 bg-[#161618] hover:border-indigo-500/40 hover:bg-white/[0.02]"
+                    }`}
+                    id="logo-upload-dropzone"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">
+                        Click to browse or drag & drop your company logo
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Supports high-res PNG, JPG, SVG, WebP, or GIF (Transparent background recommended)
+                      </p>
+                    </div>
+                    <span className="text-[10px] bg-white/5 text-slate-400 px-2.5 py-1 rounded-full font-medium border border-white/5">
+                      Max 8MB • Scaled crisply for documents
+                    </span>
+                  </div>
+                )}
+
+                {uploadError && (
+                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs p-2.5 rounded-lg flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. IMAGE URL */}
+            {logoType === "url" && (
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-400 block">Logo Image URL</label>
+                <input
+                  type="text"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://example.com/logo.png or /logo.svg"
+                  className="w-full bg-[#161618] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                  id="settings-logo-url-input"
+                />
+                
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl("/logo.svg")}
+                    className="text-[10px] bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer"
+                  >
+                    Unikorn360 Primary (/logo.svg)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl("/unikorn360_logo.svg")}
+                    className="text-[10px] bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer"
+                  >
+                    Unikorn360 Badge (/unikorn360_logo.svg)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 3. VECTOR ICON */}
             {logoType === "icon" && (
               <div className="space-y-3">
                 <label className="text-xs font-bold text-slate-400 block">Select Icon Symbol</label>
@@ -305,6 +625,7 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
               </div>
             )}
 
+            {/* 4. INITIALS TEXT */}
             {logoType === "initials" && (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 block">Brand Initials (Max 4 chars)</label>
@@ -316,38 +637,6 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
                   className="w-full bg-[#161618] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-bold tracking-widest uppercase"
                   id="settings-logo-initials-input"
                 />
-              </div>
-            )}
-
-            {logoType === "url" && (
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-slate-400 block">Logo Image URL</label>
-                <input
-                  type="text"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://example.com/logo.png or /logo.svg"
-                  className="w-full bg-[#161618] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  id="settings-logo-url-input"
-                />
-                
-                <div className="flex items-center space-x-2 pt-1">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Preset Logos:</span>
-                  <button
-                    type="button"
-                    onClick={() => setLogoUrl("/logo.svg")}
-                    className="text-[10px] bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer"
-                  >
-                    Unikorn360 Primary (/logo.svg)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLogoUrl("/unikorn360_logo.svg")}
-                    className="text-[10px] bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer"
-                  >
-                    Unikorn360 Badge (/unikorn360_logo.svg)
-                  </button>
-                </div>
               </div>
             )}
 
@@ -426,12 +715,12 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
             </div>
 
             {/* Profile Card layout */}
-            <div className="bg-gradient-to-br from-[#161618] to-[#121214] border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-inner flex flex-col justify-between h-56">
+            <div className="bg-gradient-to-br from-[#161618] to-[#121214] border border-white/10 rounded-2xl p-6 relative overflow-hidden shadow-inner flex flex-col justify-between min-h-56">
               {/* background design circles */}
               <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-indigo-500/5 blur-xl pointer-events-none" />
               <div className="absolute -bottom-12 -left-12 w-32 h-32 rounded-full bg-indigo-500/5 blur-xl pointer-events-none" />
 
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-start gap-3">
                 <div className="space-y-2">
                   <h4 className="text-lg font-extrabold text-white font-display leading-tight tracking-tight">
                     {name || "Your Business Name"}
@@ -470,9 +759,9 @@ export default function CompanySettingsComponent({ settings, onSave, loading = f
               <span>How this is used</span>
             </h4>
             <ul className="text-[11px] text-slate-400 space-y-2 list-disc pl-4 font-medium leading-relaxed">
-              <li>These details are automatically saved and merged into your secure Firestore cloud session.</li>
-              <li>When generating new invoice templates or prompts, these credentials will be injected as the default supplier, giving your documents complete legal precision.</li>
-              <li>Generated PDF downloads and printable invoices will carry your corporate name, address details, and logo theme.</li>
+              <li>Your uploaded local logo is encoded and stored securely with your profile settings.</li>
+              <li>When generating new invoice templates or prompts, these credentials will be injected as the default supplier.</li>
+              <li>Generated PDF downloads and printable invoices will carry your corporate name, address details, and custom logo.</li>
             </ul>
           </div>
         </div>

@@ -85,10 +85,13 @@ export interface CompanySettings {
   name: string;
   address: string;
   gstin: string;
-  logoType: 'icon' | 'url' | 'initials';
+  logoType: 'icon' | 'url' | 'initials' | 'upload';
   logoIcon: string;
   logoColor: string;
   logoUrl: string;
   logoInitials: string;
+  logoBase64?: string;
+  logoFileName?: string;
+  logoFileSize?: string;
 }
 

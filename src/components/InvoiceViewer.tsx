@@ -51,6 +51,22 @@ export default function InvoiceViewer({
       );
     }
 
+    if (settings.logoType === "upload" && (settings.logoBase64 || settings.logoUrl)) {
+      return (
+        <div className="w-12 h-12 rounded-xl overflow-hidden border border-white/10 bg-[#161618] p-1 flex items-center justify-center shrink-0 shadow-sm">
+          <img 
+            src={settings.logoBase64 || settings.logoUrl} 
+            alt="Company Logo" 
+            className="w-full h-full object-contain rounded-lg"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      );
+    }
+
     if (settings.logoType === "url" && settings.logoUrl) {
       return (
         <img 
@@ -294,12 +310,25 @@ Powered by InvoicePro 360 AI Workspace (Unikorn360 AI Solutions)`;
     };
     const rgb = hexToRgb(activeColor);
     doc.setTextColor(rgb.r, rgb.g, rgb.b);
-    doc.text(companySettings?.name.toUpperCase() || "INVOICEPRO 360", 14, 22);
+
+    let brandTextX = 14;
+    // Check if custom uploaded logo image is available for embedding in PDF
+    if (companySettings?.logoBase64 && (companySettings.logoType === "upload" || companySettings.logoType === "url")) {
+      try {
+        const isPng = companySettings.logoBase64.includes("image/png") || companySettings.logoBase64.includes("image/webp");
+        doc.addImage(companySettings.logoBase64, isPng ? "PNG" : "JPEG", 14, 12, 14, 14);
+        brandTextX = 32;
+      } catch (err) {
+        console.warn("Could not embed logo image in PDF:", err);
+      }
+    }
+
+    doc.text(companySettings?.name.toUpperCase() || "INVOICEPRO 360", brandTextX, 22);
     
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139); // slate-500
-    doc.text(companySettings ? `Corporate Identity: ${companySettings.gstin || "Registered Supplier"}` : "A Product of Unikorn360 AI Solutions", 14, 27);
+    doc.text(companySettings ? `Corporate Identity: ${companySettings.gstin || "Registered Supplier"}` : "A Product of Unikorn360 AI Solutions", brandTextX, 27);
     
     // Invoice Title & Info
     doc.setFont("helvetica", "bold");
