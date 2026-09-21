@@ -32,6 +32,7 @@ import {
   saveUserProfile,
   fetchUserInvoices,
   createInvoiceInDb,
+  batchCreateInvoicesInDb,
   updateInvoiceInDb,
   deleteInvoiceFromDb,
   isSupabaseConfigured
@@ -239,6 +240,24 @@ export default function App() {
     } catch (err: any) {
       console.error("Error creating invoice in Supabase:", err);
       setDbError(err?.message || "Failed to save invoice to database. Please check your Supabase connection.");
+    }
+  };
+
+  // Add multiple freshly processed batch invoices
+  const handleBatchInvoicesCreated = async (newInvoices: Invoice[]) => {
+    if (!currentUser || newInvoices.length === 0) return;
+
+    try {
+      const savedInvoices = await batchCreateInvoicesInDb(newInvoices, currentUser.id);
+      const updated = [...savedInvoices, ...invoices.filter(i => !savedInvoices.some(s => s.id === i.id))];
+      setInvoices(updated);
+      if (savedInvoices.length > 0) {
+        setSelectedInvoice(savedInvoices[0]);
+      }
+      setActiveTab("ledger");
+    } catch (err: any) {
+      console.error("Error batch creating invoices in Supabase:", err);
+      setDbError(err?.message || "Failed to save batch invoices to database. Please check your Supabase connection.");
     }
   };
 
@@ -623,6 +642,7 @@ export default function App() {
             {activeTab === "ai-creator" && (
               <InvoiceCreator 
                 onInvoiceCreated={handleInvoiceCreated}
+                onBatchInvoicesCreated={handleBatchInvoicesCreated}
                 onClose={() => setActiveTab("ledger")}
                 companySettings={companySettings}
               />

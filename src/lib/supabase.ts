@@ -270,6 +270,32 @@ export async function createInvoiceInDb(invoice: Invoice, userId: string): Promi
 }
 
 /**
+ * Insert multiple invoices into Supabase PostgreSQL in a single batch
+ */
+export async function batchCreateInvoicesInDb(invoices: Invoice[], userId: string): Promise<Invoice[]> {
+  if (!isSupabaseConfigured) return invoices;
+  if (invoices.length === 0) return [];
+
+  try {
+    const rows = invoices.map(inv => mapInvoiceToDbRow(inv, userId));
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert(rows)
+      .select();
+
+    if (error) {
+      console.error('Error batch creating invoices in Supabase:', error);
+      throw error;
+    }
+
+    return (data || []).map(mapDbRowToInvoice);
+  } catch (err) {
+    console.error('Exception batch creating invoices:', err);
+    throw err;
+  }
+}
+
+/**
  * Update an existing invoice in Supabase PostgreSQL
  */
 export async function updateInvoiceInDb(invoice: Invoice, userId: string): Promise<Invoice> {

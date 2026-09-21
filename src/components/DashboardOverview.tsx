@@ -11,25 +11,24 @@ import {
   Pie, 
   Cell,
   AreaChart,
-  Area
+  Area,
+  Legend
 } from "recharts";
 import { Invoice } from "../types";
 import { formatRupees, validateInvoice } from "../utils/invoiceUtils";
 import { 
   FileText, 
   TrendingUp, 
-  AlertTriangle, 
   DollarSign, 
-  CheckCircle, 
   Clock, 
   TrendingDown,
   ShieldCheck,
   CreditCard,
   CheckCircle2,
-  AlertCircle,
-  PlusCircle,
+  Calendar,
+  Wallet,
   ArrowUpRight,
-  Layers
+  ArrowDownRight
 } from "lucide-react";
 
 interface DashboardOverviewProps {
@@ -76,7 +75,63 @@ export default function DashboardOverview({ invoices, onSelectInvoice, onRecordP
     auditErrors += audit.errors.length;
   });
 
-  // 2. Prepare Data for Recharts
+  // 2. Prepare Data for 6-Month Cash Flow Trend Chart (Monthly Income vs. Expenses)
+  const last6MonthsCashFlow = (() => {
+    const months: { 
+      monthKey: string; 
+      monthLabel: string; 
+      fullName: string;
+      income: number; 
+      expenses: number; 
+      net: number; 
+      invoiceCount: number;
+    }[] = [];
+    const now = new Date();
+    
+    // Generate the last 6 months chronologically (from 5 months ago to current month)
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+      const fullName = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      months.push({
+        monthKey,
+        monthLabel,
+        fullName,
+        income: 0,
+        expenses: 0,
+        net: 0,
+        invoiceCount: 0
+      });
+    }
+
+    invoices.forEach(inv => {
+      if (!inv.date) return;
+      const invDate = new Date(inv.date);
+      if (isNaN(invDate.getTime())) return;
+      const key = `${invDate.getFullYear()}-${String(invDate.getMonth() + 1).padStart(2, '0')}`;
+      const targetMonth = months.find(m => m.monthKey === key);
+      if (targetMonth) {
+        targetMonth.invoiceCount += 1;
+        const isExpense = inv.category === 'Purchase' || inv.category === 'Expense';
+        if (isExpense) {
+          targetMonth.expenses += inv.totalAmount;
+        } else {
+          // Default to Sales / Income
+          targetMonth.income += inv.totalAmount;
+        }
+        targetMonth.net = targetMonth.income - targetMonth.expenses;
+      }
+    });
+
+    return months;
+  })();
+
+  const total6MonthIncome = last6MonthsCashFlow.reduce((sum, m) => sum + m.income, 0);
+  const total6MonthExpenses = last6MonthsCashFlow.reduce((sum, m) => sum + m.expenses, 0);
+  const total6MonthNet = total6MonthIncome - total6MonthExpenses;
+
+  // 3. Prepare Data for Additional Charts
   const clientMap: Record<string, number> = {};
   invoices.forEach(inv => {
     clientMap[inv.customerName] = (clientMap[inv.customerName] || 0) + inv.totalAmount;
@@ -175,13 +230,168 @@ export default function DashboardOverview({ invoices, onSelectInvoice, onRecordP
         </div>
       </div>
 
-      {/* Payment Tracking & Cash Flow Hub */}
+      {/* 6-Month Cash Flow Trend Chart (Monthly Income vs. Expenses) */}
+      <div className="bg-[#111113] p-6 rounded-2xl border border-white/5 space-y-5" id="cash-flow-trend-hub">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Wallet className="w-4 h-4" />
+              </span>
+              <h3 className="font-display font-bold text-white text-lg">
+                Cash Flow Trend — Last 6 Months
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              Monthly breakdown of business income (sales billings) vs. operational expenses & purchases
+            </p>
+          </div>
+
+          {/* 6-Month Summary Pills */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3" id="cash-flow-summary-pills">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+              <span className="text-[10px] uppercase font-bold text-emerald-400/80 block">6M Income</span>
+              <span className="text-xs font-mono font-bold text-emerald-400">{formatRupees(total6MonthIncome)}</span>
+            </div>
+            <div className="bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-xl">
+              <span className="text-[10px] uppercase font-bold text-rose-400/80 block">6M Expenses</span>
+              <span className="text-xs font-mono font-bold text-rose-400">{formatRupees(total6MonthExpenses)}</span>
+            </div>
+            <div className={`px-3 py-1.5 rounded-xl border ${
+              total6MonthNet >= 0 
+                ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300" 
+                : "bg-amber-500/10 border-amber-500/20 text-amber-300"
+            }`}>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center space-x-1">
+                <span>Net Cash Flow</span>
+                {total6MonthNet >= 0 ? <ArrowUpRight className="w-3 h-3 text-emerald-400" /> : <ArrowDownRight className="w-3 h-3 text-rose-400" />}
+              </span>
+              <span className="text-xs font-mono font-bold">
+                {total6MonthNet >= 0 ? `+${formatRupees(total6MonthNet)}` : `-${formatRupees(Math.abs(total6MonthNet))}`}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recharts Cash Flow Chart */}
+        <div className="h-72 w-full" id="cash-flow-recharts-container">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={last6MonthsCashFlow}
+              margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
+            >
+              <defs>
+                <linearGradient id="incomeBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#059669" stopOpacity={0.7} />
+                </linearGradient>
+                <linearGradient id="expenseBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#e11d48" stopOpacity={0.7} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+              <XAxis 
+                dataKey="monthLabel" 
+                stroke="#64748b" 
+                fontSize={11} 
+                tickLine={false} 
+              />
+              <YAxis 
+                stroke="#64748b" 
+                fontSize={11} 
+                tickLine={false}
+                tickFormatter={(val) => `₹${val >= 1000 ? `${Math.round(val / 1000)}k` : val}`}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0]?.payload;
+                    const income = data?.income || 0;
+                    const expenses = data?.expenses || 0;
+                    const net = income - expenses;
+                    return (
+                      <div className="bg-[#18181b] border border-white/10 p-3.5 rounded-xl shadow-2xl space-y-2 text-xs font-sans min-w-[200px]">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                          <span className="font-bold text-white flex items-center space-x-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{data?.fullName || label}</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono font-medium">
+                            {data?.invoiceCount || 0} invoice{data?.invoiceCount === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-emerald-400 flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                              <span>Income (Sales):</span>
+                            </span>
+                            <span className="font-mono font-bold text-white">{formatRupees(income)}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-rose-400 flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                              <span>Expenses (Purchases):</span>
+                            </span>
+                            <span className="font-mono font-bold text-white">{formatRupees(expenses)}</span>
+                          </div>
+                          <div className="border-t border-white/5 pt-1.5 flex justify-between items-center font-bold">
+                            <span className="text-slate-400">Net Flow:</span>
+                            <span className={`font-mono ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {net >= 0 ? `+${formatRupees(net)}` : `-${formatRupees(Math.abs(net))}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Legend 
+                verticalAlign="top" 
+                align="right"
+                wrapperStyle={{ paddingBottom: '12px' }}
+                content={() => (
+                  <div className="flex items-center justify-end space-x-4 text-xs font-medium">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
+                      <span className="text-slate-300">Income (Sales)</span>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <span className="w-3 h-3 rounded-sm bg-rose-500 inline-block"></span>
+                      <span className="text-slate-300">Expenses / Purchases</span>
+                    </div>
+                  </div>
+                )}
+              />
+              <Bar 
+                dataKey="income" 
+                name="Income" 
+                fill="url(#incomeBarGradient)" 
+                radius={[4, 4, 0, 0]} 
+                maxBarSize={42} 
+              />
+              <Bar 
+                dataKey="expenses" 
+                name="Expenses" 
+                fill="url(#expenseBarGradient)" 
+                radius={[4, 4, 0, 0]} 
+                maxBarSize={42} 
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Payment Tracking & Clearance Hub */}
       <div className="bg-[#111113] p-6 rounded-2xl border border-white/5 space-y-5" id="payment-tracking-hub">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
           <div className="space-y-1">
             <h3 className="font-display font-bold text-white text-lg flex items-center space-x-2">
               <CreditCard className="w-5 h-5 text-emerald-400" />
-              <span>Payment Tracking & Cash Flow Summary</span>
+              <span>Payment Tracking & Ledger Clearance</span>
             </h3>
             <p className="text-xs text-slate-400">
               Real-time monitoring of collected payments, outstanding balances, and partial settlements
